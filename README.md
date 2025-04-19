@@ -1,2 +1,2 @@
 # WebDevMarathon
-Nascon 25 WebDeb Competition
+Nascon 25 WebDev Competition
