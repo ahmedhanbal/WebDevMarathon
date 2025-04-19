@@ -37,6 +37,19 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  webpack: (config) => {
+    // Server-only packages
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      "mock-aws-s3": false,
+      "aws-sdk": false,
+      nock: false,
+      bcrypt: false,
+    };
+    
+    return config;
+  },
 };
 
 module.exports = nextConfig;

@@ -3,6 +3,12 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
+interface RouteParams {
+  params: {
+    id: string;
+  };
+}
+
 // Schema for course update
 const UpdateCourseSchema = z.object({
   title: z.string().min(1, "Title is required").optional(),
@@ -14,53 +20,36 @@ const UpdateCourseSchema = z.object({
   duration: z.string().optional(),
 });
 
-// Get a specific course
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+// Get a single course by ID
+export async function GET(req: Request, { params }: RouteParams) {
   try {
-    const courseId = params.id;
+    const { id } = params;
 
+    // Get course with all related data
     const course = await db.course.findUnique({
-      where: { id: courseId },
+      where: { id },
       include: {
         tutor: {
           select: {
             id: true,
             name: true,
+            email: true,
             image: true,
+            bio: true,
             expertise: true,
           },
         },
+        tags: true,
         videos: {
           orderBy: { position: "asc" },
           include: {
             transcript: true,
           },
         },
-        tags: {
-          select: {
-            name: true,
-          },
-        },
         chatSession: {
-          include: {
-            messages: {
-              orderBy: { createdAt: "desc" },
-              take: 20,
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    image: true,
-                    role: true,
-                  },
-                },
-              },
-            },
-          },
+          select: {
+            id: true,
+          }
         },
         _count: {
           select: {
@@ -77,55 +66,33 @@ export async function GET(
       );
     }
 
-    // Check if the current user is enrolled
+    // Check if the current user is enrolled in this course
     const session = await auth();
     let isEnrolled = false;
-    let progress = 0;
 
     if (session?.user) {
-      // If the user is the tutor, they have full access
-      if (session.user.id === course.tutorId) {
-        isEnrolled = true;
-      } else {
-        // Check if the user is enrolled
-        const enrollment = await db.enrollment.findUnique({
-          where: {
-            studentId_courseId: {
-              studentId: session.user.id,
-              courseId: course.id,
-            },
+      const enrollment = await db.enrollment.findUnique({
+        where: {
+          studentId_courseId: {
+            studentId: session.user.id,
+            courseId: id,
           },
-        });
+        },
+      });
 
-        isEnrolled = !!enrollment;
-
-        // Get course progress if enrolled
-        if (isEnrolled) {
-          const courseProgress = await db.courseProgress.findUnique({
-            where: {
-              userId_courseId: {
-                userId: session.user.id,
-                courseId: course.id,
-              },
-            },
-          });
-
-          if (courseProgress) {
-            progress = courseProgress.progress;
-          }
-        }
-      }
+      isEnrolled = !!enrollment;
     }
 
-    // Format the response
-    return NextResponse.json({
+    // Format response
+    const formattedCourse = {
       ...course,
-      tags: course.tags.map(tag => tag.name),
-      enrollmentsCount: course._count.enrollments,
       isEnrolled,
-      progress,
+      enrollmentsCount: course._count.enrollments,
+      isTutor: session?.user?.id === course.tutorId,
       _count: undefined,
-    });
+    };
+
+    return NextResponse.json(formattedCourse);
   } catch (error) {
     console.error("[COURSE_GET]", error);
     return NextResponse.json(
@@ -136,16 +103,13 @@ export async function GET(
 }
 
 // Update a course
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: Request, { params }: RouteParams) {
   try {
+    const { id } = params;
     const session = await auth();
-    const courseId = params.id;
 
-    // Check if user is authenticated
-    if (!session || !session.user) {
+    // Verify authentication and authorization
+    if (!session?.user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -154,8 +118,8 @@ export async function PATCH(
 
     // Get the course to check ownership
     const existingCourse = await db.course.findUnique({
-      where: { id: courseId },
-      select: { tutorId: true },
+      where: { id },
+      include: { tags: true },
     });
 
     if (!existingCourse) {
@@ -165,15 +129,15 @@ export async function PATCH(
       );
     }
 
-    // Verify the user is the course owner
+    // Verify the user is the course tutor
     if (existingCourse.tutorId !== session.user.id && session.user.role !== "ADMIN") {
       return NextResponse.json(
-        { error: "Forbidden - You do not have permission to edit this course" },
+        { error: "You are not authorized to update this course" },
         { status: 403 }
       );
     }
 
-    // Parse and validate request body
+    // Validate the request body
     const body = await req.json();
     const validatedFields = UpdateCourseSchema.safeParse(body);
 
@@ -186,53 +150,44 @@ export async function PATCH(
 
     const { title, description, longDescription, thumbnail, tags, price, duration } = validatedFields.data;
 
-    // Update course
-    const updatedCourse = await db.course.update({
-      where: { id: courseId },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description }),
-        ...(longDescription !== undefined && { longDescription }),
-        ...(thumbnail !== undefined && { thumbnail }),
-        ...(price !== undefined && { price }),
-        ...(duration !== undefined && { duration }),
-      },
-      include: {
-        tags: true,
-      },
-    });
+    // Update course basic info
+    const updateData: any = {
+      ...(title && { title }),
+      ...(description && { description }),
+      ...(longDescription !== undefined && { longDescription }),
+      ...(thumbnail !== undefined && { thumbnail }),
+      ...(price !== undefined && { price }),
+      ...(duration !== undefined && { duration }),
+    };
 
     // Update tags if provided
     if (tags) {
       // Delete existing tags
       await db.courseTag.deleteMany({
-        where: { courseId },
+        where: { courseId: id },
       });
 
-      // Create new tags
-      if (tags.length > 0) {
-        await Promise.all(
-          tags.map(tag =>
-            db.courseTag.create({
-              data: {
-                name: tag,
-                courseId,
-              },
-            })
-          )
-        );
-      }
+      // Add new tags
+      updateData.tags = {
+        create: tags.map(tag => ({
+          name: tag,
+        })),
+      };
     }
 
-    // Get the updated course with tags
-    const courseWithTags = await db.course.findUnique({
-      where: { id: courseId },
+    // Perform the update
+    const updatedCourse = await db.course.update({
+      where: { id },
+      data: updateData,
       include: {
         tags: true,
+        videos: {
+          orderBy: { position: "asc" },
+        },
       },
     });
 
-    return NextResponse.json(courseWithTags);
+    return NextResponse.json(updatedCourse);
   } catch (error) {
     console.error("[COURSE_PATCH]", error);
     return NextResponse.json(
@@ -243,16 +198,13 @@ export async function PATCH(
 }
 
 // Delete a course
-export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: Request, { params }: RouteParams) {
   try {
+    const { id } = params;
     const session = await auth();
-    const courseId = params.id;
 
-    // Check if user is authenticated
-    if (!session || !session.user) {
+    // Verify authentication
+    if (!session?.user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -261,8 +213,7 @@ export async function DELETE(
 
     // Get the course to check ownership
     const existingCourse = await db.course.findUnique({
-      where: { id: courseId },
-      select: { tutorId: true },
+      where: { id },
     });
 
     if (!existingCourse) {
@@ -272,20 +223,20 @@ export async function DELETE(
       );
     }
 
-    // Verify the user is the course owner or an admin
+    // Verify the user is the course tutor or an admin
     if (existingCourse.tutorId !== session.user.id && session.user.role !== "ADMIN") {
       return NextResponse.json(
-        { error: "Forbidden - You do not have permission to delete this course" },
+        { error: "You are not authorized to delete this course" },
         { status: 403 }
       );
     }
 
-    // Delete course (cascade will handle related entities)
+    // Delete the course (cascade will handle related data)
     await db.course.delete({
-      where: { id: courseId },
+      where: { id },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ message: "Course deleted successfully" });
   } catch (error) {
     console.error("[COURSE_DELETE]", error);
     return NextResponse.json(

@@ -22,24 +22,28 @@ export async function GET(req: Request) {
     const tag = url.searchParams.get("tag") || "";
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
+    const tutorId = url.searchParams.get("tutorId") || undefined;
     const skip = (page - 1) * limit;
 
     // Build where clause for filtering
-    const where = {
+    const where: any = {
       OR: [
-        { title: { contains: query, mode: "insensitive" } },
-        { description: { contains: query, mode: "insensitive" } },
+        { title: { contains: query } },
+        { description: { contains: query } },
       ],
-      ...(tag ? {
-        tags: {
-          some: {
-            name: { equals: tag, mode: "insensitive" }
-          }
-        }
-      } : {}),
+      ...(tutorId ? { tutorId } : {}),
     };
 
-    // Get courses with tutor info
+    // Add tag filtering if provided
+    if (tag) {
+      where.tags = {
+        some: {
+          name: tag
+        }
+      };
+    }
+
+    // Get courses with tutor info and relations
     const courses = await db.course.findMany({
       where,
       skip,
@@ -51,6 +55,7 @@ export async function GET(req: Request) {
             id: true,
             name: true,
             image: true,
+            bio: true,
           },
         },
         tags: {
@@ -61,6 +66,7 @@ export async function GET(req: Request) {
         _count: {
           select: {
             enrollments: true,
+            videos: true,
           },
         },
       },
@@ -69,13 +75,26 @@ export async function GET(req: Request) {
     // Get total count for pagination
     const total = await db.course.count({ where });
 
+    // Format response data
+    const formattedCourses = courses.map(course => ({
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      longDescription: course.longDescription,
+      thumbnail: course.thumbnail,
+      price: course.price,
+      duration: course.duration,
+      tutorId: course.tutorId,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt,
+      tutor: course.tutor,
+      tags: course.tags.map(tag => tag.name),
+      enrollmentsCount: course._count.enrollments,
+      videosCount: course._count.videos,
+    }));
+
     return NextResponse.json({
-      courses: courses.map(course => ({
-        ...course,
-        tags: course.tags.map(tag => tag.name),
-        enrollmentsCount: course._count.enrollments,
-        _count: undefined,
-      })),
+      courses: formattedCourses,
       pagination: {
         total,
         page,
@@ -100,7 +119,7 @@ export async function POST(req: Request) {
     // Check if user is authenticated and is a tutor
     if (!session || !session.user || session.user.role !== "TUTOR") {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized. Only tutors can create courses." },
         { status: 401 }
       );
     }
@@ -135,9 +154,20 @@ export async function POST(req: Request) {
             })),
           },
         } : {}),
+        // Create a chat session for the course
+        chatSession: {
+          create: {
+            participants: {
+              connect: {
+                id: session.user.id // Add the tutor as initial participant
+              }
+            }
+          }
+        }
       },
       include: {
         tags: true,
+        chatSession: true
       },
     });
 

@@ -1,10 +1,10 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GithubProvider from "next-auth/providers/github";
 import GoogleProvider from "next-auth/providers/google";
+import { comparePasswords } from "@/lib/server/bcrypt";
 
 const prisma = new PrismaClient();
 
@@ -40,7 +40,7 @@ export const authOptions = {
           return null;
         }
 
-        const passwordMatch = await bcrypt.compare(
+        const passwordMatch = await comparePasswords(
           credentials.password,
           user.password
         );

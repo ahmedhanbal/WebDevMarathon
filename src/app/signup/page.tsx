@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { signIn } from "next-auth/react";
 
-export default function SignupPage() {
+// Wrap the component that uses useSearchParams in a separate component
+function SignupPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<string>("student");
 
@@ -77,6 +78,15 @@ export default function SignupPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+// Main export that wraps with Suspense
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="container flex h-screen items-center justify-center">Loading...</div>}>
+      <SignupPageContent />
+    </Suspense>
   );
 }
 

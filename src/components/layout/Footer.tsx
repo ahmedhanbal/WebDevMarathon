@@ -1,15 +1,46 @@
+"use client";
+
 import Link from "next/link";
-import { GraduationCap, Twitter, Facebook, Instagram, Linkedin, Github } from "lucide-react";
+import { GraduationCap, Twitter, Facebook, Instagram, Linkedin, Github, ArrowRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 const Footer = () => {
+  // Animation variants for staggered children
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.3
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    show: { y: 0, opacity: 1 }
+  };
+
   return (
-    <footer className="bg-muted py-12">
+    <footer className="bg-gradient-to-b from-muted to-muted/70 py-12">
       <div className="container">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
+        <motion.div 
+          className="grid grid-cols-1 gap-8 md:grid-cols-4"
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={containerVariants}
+        >
           {/* Logo and Description */}
-          <div className="md:col-span-1">
+          <motion.div className="md:col-span-1" variants={itemVariants}>
             <Link href="/" className="mb-4 flex items-center gap-2 text-xl font-bold">
-              <GraduationCap className="h-6 w-6" />
+              <motion.div
+                whileHover={{ rotate: 5, scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <GraduationCap className="h-6 w-6" />
+              </motion.div>
               <span>EdTech</span>
             </Link>
             <p className="mb-6 text-muted-foreground">
@@ -22,10 +53,10 @@ const Footer = () => {
               <SocialLink href="#" icon={<Linkedin className="h-4 w-4" />} />
               <SocialLink href="#" icon={<Github className="h-4 w-4" />} />
             </div>
-          </div>
+          </motion.div>
 
           {/* Navigation Links */}
-          <div>
+          <motion.div variants={itemVariants}>
             <h3 className="mb-4 text-lg font-medium">Platform</h3>
             <ul className="space-y-2">
               <FooterLink href="/courses">All Courses</FooterLink>
@@ -33,9 +64,9 @@ const Footer = () => {
               <FooterLink href="/testimonials">Testimonials</FooterLink>
               <FooterLink href="/faqs">FAQs</FooterLink>
             </ul>
-          </div>
+          </motion.div>
 
-          <div>
+          <motion.div variants={itemVariants}>
             <h3 className="mb-4 text-lg font-medium">Company</h3>
             <ul className="space-y-2">
               <FooterLink href="/about">About Us</FooterLink>
@@ -43,9 +74,9 @@ const Footer = () => {
               <FooterLink href="/contact">Contact</FooterLink>
               <FooterLink href="/blog">Blog</FooterLink>
             </ul>
-          </div>
+          </motion.div>
 
-          <div>
+          <motion.div variants={itemVariants}>
             <h3 className="mb-4 text-lg font-medium">Legal</h3>
             <ul className="space-y-2">
               <FooterLink href="/terms">Terms of Service</FooterLink>
@@ -53,12 +84,18 @@ const Footer = () => {
               <FooterLink href="/cookies">Cookies</FooterLink>
               <FooterLink href="/license">Licenses</FooterLink>
             </ul>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        <div className="mt-12 border-t border-border pt-6 text-center text-sm text-muted-foreground">
+        <motion.div 
+          className="mt-12 border-t border-border pt-6 text-center text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.5 }}
+        >
           <p>© {new Date().getFullYear()} EdTech Platform. All rights reserved.</p>
-        </div>
+        </motion.div>
       </div>
     </footer>
   );
@@ -67,26 +104,41 @@ const Footer = () => {
 // Footer link component
 const FooterLink = ({ href, children }: { href: string; children: React.ReactNode }) => {
   return (
-    <li>
+    <motion.li whileHover={{ x: 5 }} transition={{ type: "spring", stiffness: 400 }}>
       <Link
         href={href}
-        className="text-muted-foreground transition-colors hover:text-foreground"
+        className="flex items-center text-muted-foreground transition-colors hover:text-primary"
       >
-        {children}
+        <span>{children}</span>
+        <motion.div 
+          initial={{ opacity: 0, x: -5 }} 
+          whileHover={{ opacity: 1, x: 0 }}
+          className="inline-block ml-1"
+        >
+          <ArrowRight className="h-3 w-3" />
+        </motion.div>
       </Link>
-    </li>
+    </motion.li>
   );
 };
 
 // Social media link component
 const SocialLink = ({ href, icon }: { href: string; icon: React.ReactNode }) => {
   return (
-    <Link
-      href={href}
-      className="flex h-8 w-8 items-center justify-center rounded-full bg-background text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+    <motion.div
+      whileHover={{ 
+        scale: 1.2,
+        rotate: 5
+      }}
+      transition={{ type: "spring", stiffness: 400 }}
     >
-      {icon}
-    </Link>
+      <Link
+        href={href}
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-background text-muted-foreground transition-all hover:bg-gradient-to-br hover:from-blue-500 hover:to-purple-600 hover:text-white"
+      >
+        {icon}
+      </Link>
+    </motion.div>
   );
 };
 

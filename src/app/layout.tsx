@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Toaster } from "@/components/ui/toaster";
+import Providers from "@/providers";
 
 import "./globals.css";
 import ClientBody from "./ClientBody";
@@ -39,12 +40,14 @@ export default function RootLayout({
         )}
       >
         <ClientBody>
-          <Navbar />
-          <main className="flex-grow">
-            {children}
-          </main>
-          <Footer />
-          <Toaster />
+          <Providers>
+            <Navbar />
+            <main className="flex-grow">
+              {children}
+            </main>
+            <Footer />
+            <Toaster />
+          </Providers>
         </ClientBody>
       </body>
     </html>

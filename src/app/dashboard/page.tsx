@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -28,8 +27,6 @@ import {
   MessageSquare,
   Bell
 } from "lucide-react";
-import { auth } from "@/auth";
-import { db } from "@/lib/db";
 
 // Mock data for enrolled courses
 const ENROLLED_COURSES = [
@@ -128,86 +125,32 @@ const NOTIFICATIONS = [
   },
 ];
 
-export default async function DashboardPage() {
-  const session = await auth();
+export default function DashboardPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
 
-  // Redirect to login if not authenticated
-  if (!session || !session.user) {
-    redirect("/login");
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    } else if (status !== "loading") {
+      setLoading(false);
+    }
+  }, [status, router]);
+
+  if (status === "loading" || loading) {
+    return (
+      <div className="container flex min-h-screen items-center justify-center">
+        <p className="text-lg">Loading...</p>
+      </div>
+    );
   }
-
-  // Fetch user's enrolled courses with progress
-  const enrolledCourses = await db.course.findMany({
-    where: {
-      enrollments: {
-        some: {
-          studentId: session.user.id,
-        },
-      },
-    },
-    include: {
-      tutor: {
-        select: {
-          name: true,
-          image: true,
-        },
-      },
-      progress: {
-        where: {
-          userId: session.user.id,
-        },
-      },
-      videos: {
-        select: {
-          id: true,
-        },
-      },
-      _count: {
-        select: {
-          enrollments: true,
-        },
-      },
-    },
-    orderBy: {
-      enrollments: {
-        _count: "desc",
-      },
-    },
-  });
-
-  // Fetch recently accessed courses
-  const recentCourses = await db.courseProgress.findMany({
-    where: {
-      userId: session.user.id,
-    },
-    orderBy: {
-      lastAccessed: "desc",
-    },
-    take: 3,
-    include: {
-      course: {
-        include: {
-          tutor: {
-            select: {
-              name: true,
-              image: true,
-            },
-          },
-          videos: {
-            select: {
-              id: true,
-            },
-          },
-        },
-      },
-    },
-  });
 
   return (
     <div className="container py-10">
       <h1 className="mb-2 text-3xl font-bold">My Dashboard</h1>
       <p className="mb-8 text-muted-foreground">
-        Welcome back, {session.user.name}! Here's your learning update.
+        Welcome back, {session?.user?.name || "User"}! Here's your learning update.
       </p>
 
       <Tabs defaultValue="enrolled" className="w-full">
@@ -218,7 +161,7 @@ export default async function DashboardPage() {
 
         <TabsContent value="enrolled">
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {enrolledCourses.length === 0 ? (
+            {ENROLLED_COURSES.length === 0 ? (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center">
                 <h3 className="mb-2 text-lg font-medium">You haven't enrolled in any courses yet</h3>
                 <p className="mb-6 text-muted-foreground">
@@ -229,12 +172,7 @@ export default async function DashboardPage() {
                 </Button>
               </div>
             ) : (
-              enrolledCourses.map((course) => {
-                // Get progress data
-                const progressData = course.progress[0];
-                const progress = progressData?.progress || 0;
-                const totalVideos = course.videos.length;
-
+              ENROLLED_COURSES.map((course) => {
                 return (
                   <Card key={course.id} className="overflow-hidden">
                     <div className="relative h-40 w-full">
@@ -246,47 +184,45 @@ export default async function DashboardPage() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                       <div className="absolute bottom-3 left-3">
                         <Badge variant="secondary" className="bg-black/60 text-white">
-                          {Math.round(progress)}% Complete
+                          {Math.round(course.progress)}% Complete
                         </Badge>
                       </div>
                     </div>
 
                     <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="line-clamp-1 text-lg">{course.title}</CardTitle>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src={course.tutor.image || undefined} alt={course.tutor.name || "Tutor"} />
-                          <AvatarFallback>{course.tutor.name?.[0] || "T"}</AvatarFallback>
+                          <AvatarImage src={course.tutor.avatar} alt={course.tutor.name} />
+                          <AvatarFallback>{course.tutor.name.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <CardDescription>{course.tutor.name}</CardDescription>
                       </div>
-                      <CardTitle className="line-clamp-1 text-xl">{course.title}</CardTitle>
                     </CardHeader>
 
                     <CardContent className="pb-2">
-                      <div className="mb-4">
-                        <div className="mb-1 flex items-center justify-between text-sm">
-                          <span>Progress</span>
-                          <span>{Math.round(progress)}%</span>
+                      <div className="mb-4 space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-medium">{course.progress}%</span>
                         </div>
-                        <Progress value={progress} className="h-2" />
+                        <Progress value={course.progress} className="h-2" />
                       </div>
 
-                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Book className="h-4 w-4" />
-                          <span>{totalVideos} lessons</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          <span>{course.duration || "Self-paced"}</span>
-                        </div>
+                      <div className="grid grid-cols-[1rem_1fr] items-start gap-x-2 gap-y-1 text-sm">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Last accessed {course.lastAccessed}</span>
+                        <Play className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Next: {course.nextLesson}</span>
                       </div>
                     </CardContent>
 
                     <CardFooter>
-                      <Button asChild className="w-full">
+                      <Button asChild className="w-full" variant="outline">
                         <Link href={`/courses/${course.id}`}>
-                          {progress > 0 ? "Continue Learning" : "Start Learning"}
+                          Continue Learning
                           <ChevronRight className="ml-1 h-4 w-4" />
                         </Link>
                       </Button>
@@ -300,82 +236,26 @@ export default async function DashboardPage() {
 
         <TabsContent value="recent">
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {recentCourses.length === 0 ? (
-              <div className="col-span-full rounded-lg border border-dashed p-10 text-center">
-                <h3 className="mb-2 text-lg font-medium">No recent course activity</h3>
-                <p className="mb-6 text-muted-foreground">
-                  Start learning to see your recent activity here.
-                </p>
-                <Button asChild>
-                  <Link href="/courses">Browse Courses</Link>
-                </Button>
-              </div>
-            ) : (
-              recentCourses.map((progressItem) => {
-                const course = progressItem.course;
-                const lastAccessed = new Date(progressItem.lastAccessed).toLocaleDateString();
-                const totalVideos = course.videos.length;
-
-                return (
-                  <Card key={course.id} className="overflow-hidden">
-                    <div className="relative h-40 w-full">
-                      <img
-                        src={course.thumbnail || "https://placehold.co/600x400/e2e8f0/cccccc?text=Course+Thumbnail"}
-                        alt={course.title}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                      <div className="absolute bottom-3 left-3">
-                        <Badge variant="secondary" className="bg-black/60 text-white">
-                          {Math.round(progressItem.progress)}% Complete
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={course.tutor.image || undefined} alt={course.tutor.name || "Tutor"} />
-                          <AvatarFallback>{course.tutor.name?.[0] || "T"}</AvatarFallback>
-                        </Avatar>
-                        <CardDescription>{course.tutor.name}</CardDescription>
-                      </div>
-                      <CardTitle className="line-clamp-1 text-xl">{course.title}</CardTitle>
-                    </CardHeader>
-
-                    <CardContent className="pb-2">
-                      <div className="mb-4">
-                        <div className="mb-1 flex items-center justify-between text-sm">
-                          <span>Last accessed</span>
-                          <span>{lastAccessed}</span>
-                        </div>
-                        <Progress value={progressItem.progress} className="h-2" />
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Book className="h-4 w-4" />
-                          <span>{totalVideos} lessons</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Play className="h-4 w-4" />
-                          <span>Continue</span>
-                        </div>
-                      </div>
-                    </CardContent>
-
-                    <CardFooter>
-                      <Button asChild className="w-full">
-                        <Link href={`/courses/${course.id}`}>
-                          Continue Learning
-                          <ChevronRight className="ml-1 h-4 w-4" />
-                        </Link>
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                );
-              })
-            )}
+            {ENROLLED_COURSES.map((course) => (
+              <Card key={course.id} className="overflow-hidden">
+                <div className="relative h-40 w-full">
+                  <img
+                    src={course.thumbnail}
+                    alt={course.title}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <CardHeader>
+                  <CardTitle className="line-clamp-1">{course.title}</CardTitle>
+                  <CardDescription>Last accessed: {course.lastAccessed}</CardDescription>
+                </CardHeader>
+                <CardFooter>
+                  <Button asChild className="w-full">
+                    <Link href={`/courses/${course.id}`}>Resume</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
           </div>
         </TabsContent>
       </Tabs>

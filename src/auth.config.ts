@@ -2,9 +2,9 @@ import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Github from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
-import bcrypt from "bcrypt";
 import { LoginSchema } from "@/schemas/auth-schema";
 import { getUserByEmail } from "@/lib/data/user";
+import { comparePasswords } from "@/lib/server/bcrypt";
 
 export default {
   providers: [
@@ -26,7 +26,7 @@ export default {
           const user = await getUserByEmail(email);
           if (!user || !user.password) return null;
 
-          const passwordsMatch = await bcrypt.compare(
+          const passwordsMatch = await comparePasswords(
             password,
             user.password,
           );

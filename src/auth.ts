@@ -5,12 +5,12 @@ import authConfig from "@/auth.config";
 import { getUserById } from "@/lib/data/user";
 
 // Define UserRole type matching our schema
-type UserRole = "STUDENT" | "TUTOR" | "ADMIN";
+export type UserRole = "STUDENT" | "TUTOR" | "ADMIN";
 
 // Extend the session and JWT types
 declare module "next-auth" {
   interface User {
-    role: UserRole;
+    role?: UserRole;
   }
 
   interface Session {
@@ -47,13 +47,28 @@ export const {
       await db.user.update({
         where: { id: user.id },
         data: { emailVerified: new Date() }
-      })
+      });
     }
   },
   callbacks: {
     async signIn({ user, account }) {
       // Allow OAuth sign-in without email verification
-      if (account?.provider !== "credentials") return true;
+      if (account?.provider !== "credentials") {
+        // Set default role for new users from OAuth
+        try {
+          const dbUser = await getUserById(user.id);
+          if (dbUser && !dbUser.role) {
+            await db.user.update({
+              where: { id: user.id },
+              data: { role: "STUDENT" }
+            });
+          }
+        } catch (error) {
+          console.error("Error updating user role:", error);
+        }
+        
+        return true;
+      }
 
       // For credentials, ensure verification was done
       if (user.id) {

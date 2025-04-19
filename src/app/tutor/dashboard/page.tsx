@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -34,8 +33,6 @@ import {
   Plus,
   FileText
 } from "lucide-react";
-import { auth } from "@/auth";
-import { db } from "@/lib/db";
 
 // Mock data for created courses
 const CREATED_COURSES = [
@@ -47,9 +44,10 @@ const CREATED_COURSES = [
     status: "published",
     createdAt: "2 months ago",
     enrollments: 248,
+    videos: 10,
     revenue: 12400,
     messages: 15,
-    videos: 10,
+    duration: "12 hours",
     lastUpdated: "3 days ago",
   },
   {
@@ -60,9 +58,10 @@ const CREATED_COURSES = [
     status: "draft",
     createdAt: "1 week ago",
     enrollments: 0,
+    videos: 3,
     revenue: 0,
     messages: 0,
-    videos: 3,
+    duration: "8 hours",
     lastUpdated: "1 day ago",
   },
 ];
@@ -95,6 +94,38 @@ const NOTIFICATIONS = [
   },
 ];
 
+// Mock data for recent enrollments
+const RECENT_ENROLLMENTS = [
+  {
+    id: 1,
+    student: {
+      id: "user1",
+      name: "Emma Rodriguez",
+      image: "https://randomuser.me/api/portraits/women/44.jpg",
+      email: "emma.r@example.com"
+    },
+    course: {
+      id: 1,
+      title: "Introduction to Web Development"
+    },
+    enrolledAt: "2 days ago"
+  },
+  {
+    id: 2,
+    student: {
+      id: "user2",
+      name: "Michael Chen",
+      image: "https://randomuser.me/api/portraits/men/22.jpg",
+      email: "michael.c@example.com"
+    },
+    course: {
+      id: 1,
+      title: "Introduction to Web Development"
+    },
+    enrolledAt: "3 days ago"
+  }
+];
+
 // Mock analytics data
 const ANALYTICS = {
   totalStudents: 248,
@@ -107,70 +138,36 @@ const ANALYTICS = {
   monthlyRevenue: [600, 1200, 1800, 2100, 2650, 2400, 3050, 3750, 4200, 4900, 5500, 6250],
 };
 
-export default async function TutorDashboardPage() {
-  const session = await auth();
+export default function TutorDashboardPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
 
-  // Redirect to login if not authenticated
-  if (!session || !session.user) {
-    redirect("/login");
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    } else if (status !== "loading") {
+      // Check if user is not a tutor
+      if (session?.user?.role !== "TUTOR") {
+        router.push("/dashboard");
+      } else {
+        setLoading(false);
+      }
+    }
+  }, [status, session, router]);
+
+  if (status === "loading" || loading) {
+    return (
+      <div className="container flex min-h-screen items-center justify-center">
+        <p className="text-lg">Loading...</p>
+      </div>
+    );
   }
 
-  // Redirect to student dashboard if not a tutor
-  if (session.user.role !== "TUTOR") {
-    redirect("/dashboard");
-  }
-
-  // Fetch tutor's courses with enrollment counts
-  const courses = await db.course.findMany({
-    where: {
-      tutorId: session.user.id,
-    },
-    include: {
-      _count: {
-        select: {
-          enrollments: true,
-          videos: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  // Calculate total enrollments, courses, and videos
-  const totalEnrollments = courses.reduce((sum, course) => sum + course._count.enrollments, 0);
-  const totalCourses = courses.length;
-  const totalVideos = courses.reduce((sum, course) => sum + course._count.videos, 0);
-
-  // Get recent enrollments
-  const recentEnrollments = await db.enrollment.findMany({
-    where: {
-      course: {
-        tutorId: session.user.id,
-      },
-    },
-    take: 5,
-    orderBy: {
-      enrolledAt: "desc",
-    },
-    include: {
-      student: {
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          email: true,
-        },
-      },
-      course: {
-        select: {
-          id: true,
-          title: true,
-        },
-      },
-    },
-  });
+  // Calculate summary stats from mock data
+  const totalEnrollments = CREATED_COURSES.reduce((sum, course) => sum + course.enrollments, 0);
+  const totalCourses = CREATED_COURSES.length;
+  const totalVideos = CREATED_COURSES.reduce((sum, course) => sum + course.videos, 0);
 
   return (
     <div className="container py-10">
@@ -235,7 +232,7 @@ export default async function TutorDashboardPage() {
 
         <TabsContent value="courses">
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.length === 0 ? (
+            {CREATED_COURSES.length === 0 ? (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center">
                 <h3 className="mb-2 text-lg font-medium">You haven't created any courses yet</h3>
                 <p className="mb-6 text-muted-foreground">
@@ -246,18 +243,18 @@ export default async function TutorDashboardPage() {
                 </Button>
               </div>
             ) : (
-              courses.map((course) => (
+              CREATED_COURSES.map((course) => (
                 <Card key={course.id} className="overflow-hidden">
                   <div className="relative h-40 w-full">
                     <img
-                      src={course.thumbnail || "https://placehold.co/600x400/e2e8f0/cccccc?text=Course+Thumbnail"}
+                      src={course.thumbnail}
                       alt={course.title}
                       className="h-full w-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                     <div className="absolute bottom-3 left-3">
                       <Badge className="bg-black/60 text-white">
-                        {course._count.enrollments} {course._count.enrollments === 1 ? "student" : "students"}
+                        {course.enrollments} {course.enrollments === 1 ? "student" : "students"}
                       </Badge>
                     </div>
                   </div>
@@ -274,7 +271,7 @@ export default async function TutorDashboardPage() {
                       <div className="flex items-center gap-1">
                         <Video className="h-4 w-4" />
                         <span>
-                          {course._count.videos} {course._count.videos === 1 ? "video" : "videos"}
+                          {course.videos} {course.videos === 1 ? "video" : "videos"}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -286,12 +283,12 @@ export default async function TutorDashboardPage() {
 
                   <CardFooter className="flex gap-2">
                     <Button variant="outline" className="flex-1" asChild>
-                      <Link href={`/courses/${course.id}`}>
-                        View
+                      <Link href={`/tutor/courses/${course.id}`}>
+                        Manage
                       </Link>
                     </Button>
-                    <Button variant="default" className="flex-1" asChild>
-                      <Link href={`/tutor/courses/${course.id}`}>
+                    <Button variant="outline" className="flex-1" asChild>
+                      <Link href={`/tutor/courses/${course.id}/edit`}>
                         Edit
                       </Link>
                     </Button>
@@ -304,52 +301,32 @@ export default async function TutorDashboardPage() {
 
         <TabsContent value="enrollments">
           <div className="rounded-lg border">
-            {recentEnrollments.length === 0 ? (
-              <div className="p-10 text-center">
-                <h3 className="mb-2 text-lg font-medium">No enrollments yet</h3>
-                <p className="text-muted-foreground">
-                  Once students enroll in your courses, they'll appear here.
-                </p>
+            {RECENT_ENROLLMENTS.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-muted-foreground">No recent enrollments yet.</p>
               </div>
             ) : (
-              recentEnrollments.map((enrollment, i) => (
-                <div
-                  key={enrollment.id}
-                  className={`flex items-center justify-between p-4 ${
-                    i < recentEnrollments.length - 1 ? "border-b" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage
-                        src={enrollment.student.image || undefined}
-                        alt={enrollment.student.name || "Student"}
-                      />
-                      <AvatarFallback>{enrollment.student.name?.[0] || "S"}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{enrollment.student.name}</p>
-                      <p className="text-sm text-muted-foreground">{enrollment.student.email}</p>
+              <div className="divide-y">
+                {RECENT_ENROLLMENTS.map((enrollment) => (
+                  <div key={enrollment.id} className="flex items-center justify-between p-4">
+                    <div className="flex items-center space-x-4">
+                      <Avatar>
+                        <AvatarImage src={enrollment.student.image} alt={enrollment.student.name} />
+                        <AvatarFallback>{enrollment.student.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">{enrollment.student.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Enrolled in {enrollment.course.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{enrollment.enrolledAt}</p>
+                      </div>
                     </div>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/tutor/students/${enrollment.student.id}`}>View</Link>
+                    </Button>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">{enrollment.course.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Enrolled {new Date(enrollment.enrolledAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-            
-            {recentEnrollments.length > 0 && (
-              <div className="flex items-center justify-center p-4">
-                <Button variant="ghost" size="sm" className="gap-1" asChild>
-                  <Link href="/tutor/enrollments">
-                    View All Enrollments
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+                ))}
               </div>
             )}
           </div>

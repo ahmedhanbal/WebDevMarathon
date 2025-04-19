@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcrypt";
 import { db } from "@/lib/db";
 import { getUserByEmail } from "@/lib/data/user";
+import { hashPassword } from "@/lib/server/bcrypt";
 import { z } from "zod";
 
 // Define UserRole type
@@ -38,8 +38,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password using server-only function
+    const hashedPassword = await hashPassword(password);
 
     // Create user
     const user = await db.user.create({
