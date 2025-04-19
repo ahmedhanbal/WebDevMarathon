@@ -1,4 +1,5 @@
-# Nascon 25 WebDev Marathon
-## Team Members
-- Ahmed Ali Zahid
-- Muhammad Haseeb
+# WebDevMarathon
+Nascon 25 WebDev Competition
+# Team Members
+ - Ahmed Ali Zahid
+ - Muhammad Haseeb
