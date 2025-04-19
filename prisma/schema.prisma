@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -18,7 +18,7 @@ model User {
   emailVerified DateTime?
   image         String?
   password      String?
-  role          UserRole  @default(STUDENT)
+  role          String    @default("STUDENT")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -40,12 +40,6 @@ model User {
   chatSessions  ChatSession[]   @relation("ChatParticipants")
 }
 
-enum UserRole {
-  STUDENT
-  TUTOR
-  ADMIN
-}
-
 // Auth Models (NextAuth)
 model Account {
   id                 String  @id @default(cuid())
@@ -53,12 +47,12 @@ model Account {
   type               String
   provider           String
   providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
+  refresh_token      String?
+  access_token       String?
   expires_at         Int?
   token_type         String?
   scope              String?
-  id_token           String?  @db.Text
+  id_token           String?
   session_state      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -87,7 +81,7 @@ model Course {
   id          String    @id @default(cuid())
   title       String
   description String
-  longDescription String? @db.Text
+  longDescription String?
   thumbnail   String?
   price       Float?
   duration    String?
@@ -125,7 +119,8 @@ model Video {
 
 model Transcript {
   id          String    @id @default(cuid())
-  content     String    @db.Text
+  content     String
+
   createdAt   DateTime  @default(now())
 
   // Relations
@@ -201,7 +196,7 @@ model ChatSession {
 
 model Message {
   id            String    @id @default(cuid())
-  content       String    @db.Text
+  content       String
   userId        String
   chatSessionId String
   createdAt     DateTime  @default(now())

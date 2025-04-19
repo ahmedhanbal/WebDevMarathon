@@ -19,7 +19,7 @@ export const RegisterSchema = z.object({
   password: z.string().min(8, {
     message: "Password must be at least 8 characters long",
   }),
-  role: z.enum(["STUDENT", "TUTOR"]).default("STUDENT"),
+  role: z.string().default("STUDENT"), // Updated to use string-based roles
   expertise: z.string().optional(),
 });
 

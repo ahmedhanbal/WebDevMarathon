@@ -4,12 +4,8 @@ import { db } from "@/lib/db";
 import authConfig from "@/auth.config";
 import { getUserById } from "@/lib/data/user";
 
-// Define the UserRole enum matching Prisma schema
-enum UserRole {
-  STUDENT = "STUDENT",
-  TUTOR = "TUTOR",
-  ADMIN = "ADMIN",
-}
+// Define UserRole type matching our schema
+type UserRole = "STUDENT" | "TUTOR" | "ADMIN";
 
 // Extend the session and JWT types
 declare module "next-auth" {
@@ -90,8 +86,7 @@ export const {
       const existingUser = await getUserById(token.sub);
       if (!existingUser) return token;
 
-      // Use the UserRole enum directly
-      token.role = existingUser.role;
+      token.role = existingUser.role as UserRole;
       token.name = existingUser.name;
       token.email = existingUser.email;
       token.picture = existingUser.image;

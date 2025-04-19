@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, BookOpen, ArrowLeft, Github, Mail } from "lucide-react";
+import { GraduationCap, BookOpen, ArrowLeft, Github, Mail, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
+import { signIn } from "next-auth/react";
 
 export default function SignupPage() {
   const searchParams = useSearchParams();
@@ -79,38 +81,197 @@ export default function SignupPage() {
 }
 
 function SignupForm({ userType }: { userType: "student" | "tutor" }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    expertise: "",
+  });
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (userType === "tutor" && !formData.expertise) {
+      toast({
+        title: "Error",
+        description: "Please specify your area of expertise",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // Register the user
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: `${formData.firstName} ${formData.lastName}`,
+          email: formData.email,
+          password: formData.password,
+          role: userType.toUpperCase(),
+          expertise: formData.expertise,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to register");
+      }
+
+      toast({
+        title: "Success!",
+        description: "Your account has been created",
+      });
+
+      // Sign in the user after registration
+      const signInResult = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      });
+
+      if (signInResult?.error) {
+        // If sign-in fails, redirect to login
+        router.push("/login");
+        return;
+      }
+
+      // Redirect to dashboard based on role
+      router.push(userType === "student" ? "/dashboard" : "/tutor/dashboard");
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSocialSignup = async (provider: "github" | "google") => {
+    try {
+      setIsLoading(true);
+      await signIn(provider, {
+        callbackUrl: userType === "tutor" ? "/tutor/dashboard" : "/dashboard",
+      });
+    } catch (error) {
+      console.error(`${provider} sign-up error:`, error);
+      toast({
+        title: "Sign-up Failed",
+        description: `Could not sign up with ${provider}`,
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <form className="space-y-4">
+    <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="first-name">First Name</Label>
-          <Input id="first-name" placeholder="John" required />
+          <Label htmlFor="firstName">First Name</Label>
+          <Input
+            id="firstName"
+            name="firstName"
+            value={formData.firstName}
+            onChange={handleChange}
+            placeholder="John"
+            required
+            disabled={isLoading}
+          />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="last-name">Last Name</Label>
-          <Input id="last-name" placeholder="Doe" required />
+          <Label htmlFor="lastName">Last Name</Label>
+          <Input
+            id="lastName"
+            name="lastName"
+            value={formData.lastName}
+            onChange={handleChange}
+            placeholder="Doe"
+            required
+            disabled={isLoading}
+          />
         </div>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" placeholder="john@example.com" required />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          placeholder="john@example.com"
+          required
+          disabled={isLoading}
+        />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" type="password" placeholder="••••••••" required />
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="••••••••"
+          required
+          disabled={isLoading}
+        />
       </div>
 
       {userType === "tutor" && (
         <div className="space-y-2">
           <Label htmlFor="expertise">Area of Expertise</Label>
-          <Input id="expertise" placeholder="e.g. Computer Science, Mathematics, etc." required />
+          <Input
+            id="expertise"
+            name="expertise"
+            value={formData.expertise}
+            onChange={handleChange}
+            placeholder="e.g. Computer Science, Mathematics, etc."
+            required
+            disabled={isLoading}
+          />
         </div>
       )}
 
-      <Button type="submit" className="w-full">
-        Create Account
+      <Button type="submit" className="w-full" disabled={isLoading}>
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Creating Account...
+          </>
+        ) : (
+          "Create Account"
+        )}
       </Button>
 
       <div className="relative my-6">
@@ -123,11 +284,23 @@ function SignupForm({ userType }: { userType: "student" | "tutor" }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Button variant="outline" type="button" className="w-full">
+        <Button
+          variant="outline"
+          type="button"
+          className="w-full"
+          onClick={() => handleSocialSignup("github")}
+          disabled={isLoading}
+        >
           <Github className="mr-2 h-4 w-4" />
           GitHub
         </Button>
-        <Button variant="outline" type="button" className="w-full">
+        <Button
+          variant="outline"
+          type="button"
+          className="w-full"
+          onClick={() => handleSocialSignup("google")}
+          disabled={isLoading}
+        >
           <Mail className="mr-2 h-4 w-4" />
           Google
         </Button>
