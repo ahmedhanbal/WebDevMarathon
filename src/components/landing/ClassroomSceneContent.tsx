@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Suspense } from "react";
 import {
   OrbitControls,
   PerspectiveCamera,
@@ -9,9 +9,8 @@ import {
   Sphere,
   Html
 } from "@react-three/drei";
+import { useRef, useState, useEffect } from "react";
 import type * as THREE from "three";
-import dynamic from 'next/dynamic';
-import { Suspense } from 'react';
 
 // Simple desk component
 const Desk = ({
@@ -235,7 +234,7 @@ const FloatingObject = ({
 }) => {
   const ref = useRef<THREE.Group>(null);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }: { clock: THREE.Clock }) => {
     const t = clock.getElapsedTime() * speed;
 
     if (ref.current) {
@@ -522,29 +521,15 @@ const Scene = () => {
   );
 };
 
-// Import the 3D scene content with no SSR
-const ClassroomSceneContent = dynamic(
-  () => import('./ClassroomSceneContent'),
-  { ssr: false }
-);
-
-// Placeholder component to show while the 3D scene is loading
-const ScenePlaceholder = () => (
-  <div className="h-[60vh] w-full flex items-center justify-center bg-gray-100">
-    <div className="flex flex-col items-center space-y-4">
-      <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-lg text-blue-800 font-medium">Loading 3D Classroom...</p>
-    </div>
-  </div>
-);
-
-// Main component that renders the 3D scene with a loading fallback
-const ClassroomScene = () => {
+// Main component that wraps the Scene with Canvas
+const ClassroomSceneContent = () => {
   return (
-    <Suspense fallback={<ScenePlaceholder />}>
-      <ClassroomSceneContent />
-    </Suspense>
+    <div className="h-[60vh] w-full">
+      <Canvas shadows>
+        <Scene />
+      </Canvas>
+    </div>
   );
 };
 
-export default ClassroomScene;
+export default ClassroomSceneContent; 
