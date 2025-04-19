@@ -28,6 +28,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useSocket } from "@/hooks/useSocket";
+import { Message as ChatMessage } from "@/types/chat";
+import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 
 // Mock data - single course details
 const COURSE = {
@@ -162,6 +166,49 @@ export default function CourseDetailPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [message, setMessage] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(COURSE.chatMessages || []);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const { data: session } = useSession();
+  
+  // Initialize socket connection
+  const { isConnected, messages, sendMessage: socketSendMessage, usersTyping, startTyping, stopTyping } = 
+    useSocket(params?.id);
+  
+  // Update chat messages when new messages arrive from socket
+  useEffect(() => {
+    if (messages.length > 0) {
+      setChatMessages((prev) => [...prev, ...messages]);
+    }
+  }, [messages]);
+
+  // Handle typing indicator
+  useEffect(() => {
+    const hasUsersTyping = usersTyping.length > 0;
+    setIsTyping(hasUsersTyping);
+  }, [usersTyping]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+    
+    // Handle typing indicator
+    if (session?.user?.name && params?.id) {
+      // Clear existing timeout
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+      
+      // Send typing event
+      startTyping(params.id, session.user.name);
+      
+      // Set timeout to stop typing indicator
+      const timeout = setTimeout(() => {
+        stopTyping(params.id);
+      }, 3000);
+      
+      setTypingTimeout(timeout);
+    }
+  };
 
   useEffect(() => {
     // In a real app, fetch course data based on courseId
@@ -177,11 +224,33 @@ export default function CourseDetailPage() {
   };
 
   const sendMessage = () => {
-    if (message.trim() === "") return;
+    if (message.trim() === "" || !session?.user || !params?.id) return;
 
-    // In a real app, send message to API/socket
-    alert(`Message sent: ${message}`);
+    // Send message via socket
+    socketSendMessage(
+      params.id,
+      message,
+      {
+        id: session.user.id as string,
+        name: session.user.name || "Anonymous",
+        image: session.user.image,
+        role: session.user.role as string || "STUDENT",
+      }
+    );
+
+    // Clear message
     setMessage("");
+    
+    // Stop typing indicator
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+    }
+    stopTyping(params.id);
+    
+    // Show toast if not connected
+    if (!isConnected) {
+      toast.error("Not connected to chat. Please refresh the page.");
+    }
   };
 
   return (
@@ -401,31 +470,42 @@ export default function CourseDetailPage() {
 
                   <div className="flex-grow overflow-y-auto p-4">
                     <div className="space-y-6">
-                      {COURSE.chatMessages.map((msg) => (
+                      {chatMessages.map((msg) => (
                         <div key={msg.id} className="flex gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={msg.user.avatar} alt={msg.user.name} />
-                            <AvatarFallback>{msg.user.name.charAt(0)}</AvatarFallback>
+                            <AvatarImage src={msg.userImage} alt={msg.userName} />
+                            <AvatarFallback>{msg.userName.charAt(0)}</AvatarFallback>
                           </Avatar>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{msg.user.name}</span>
-                              {msg.user.role === "tutor" && (
+                              <span className="font-medium">{msg.userName}</span>
+                              {msg.userRole === "TUTOR" && (
                                 <Badge variant="outline" className="text-xs">Instructor</Badge>
                               )}
-                              <span className="text-xs text-muted-foreground">{msg.timestamp}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(msg.timestamp).toLocaleTimeString()}
+                              </span>
                             </div>
-                            <p className="mt-1 text-sm">{msg.message}</p>
+                            <p className="mt-1 text-sm">{msg.content}</p>
                           </div>
                         </div>
                       ))}
                     </div>
+                    
+                    {isTyping && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        {usersTyping.join(", ")} {usersTyping.length === 1 ? "is" : "are"} typing...
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t p-4">
                     <div className="flex gap-3">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src="https://randomuser.me/api/portraits/men/50.jpg" alt="User" />
+                        <AvatarImage 
+                          src={session?.user?.image || ""} 
+                          alt={session?.user?.name || "User"} 
+                        />
                         <AvatarFallback>
                           <User className="h-4 w-4" />
                         </AvatarFallback>
@@ -435,9 +515,26 @@ export default function CourseDetailPage() {
                           placeholder="Ask a question or start a discussion..."
                           className="min-h-24 resize-none"
                           value={message}
-                          onChange={(e) => setMessage(e.target.value)}
+                          onChange={handleChange}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              sendMessage();
+                            }
+                          }}
                         />
-                        <div className="mt-2 flex justify-end">
+                        <div className="mt-2 flex justify-between items-center">
+                          <span className="text-xs text-muted-foreground">
+                            {isConnected ? (
+                              <span className="flex items-center">
+                                <span className="mr-1 h-2 w-2 rounded-full bg-green-500"></span> Connected
+                              </span>
+                            ) : (
+                              <span className="flex items-center">
+                                <span className="mr-1 h-2 w-2 rounded-full bg-red-500"></span> Disconnected
+                              </span>
+                            )}
+                          </span>
                           <Button onClick={sendMessage} className="flex items-center gap-2">
                             <Send className="h-4 w-4" />
                             Send

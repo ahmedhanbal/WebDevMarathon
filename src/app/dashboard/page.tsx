@@ -28,6 +28,8 @@ import {
   MessageSquare,
   Bell
 } from "lucide-react";
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
 
 // Mock data for enrolled courses
 const ENROLLED_COURSES = [
@@ -126,280 +128,257 @@ const NOTIFICATIONS = [
   },
 ];
 
-export default function StudentDashboard() {
-  const { data: session, status } = useSession();
-  const [unreadNotifications, setUnreadNotifications] = useState<number>(0);
+export default async function DashboardPage() {
+  const session = await auth();
 
-  useEffect(() => {
-    // Count unread notifications
-    setUnreadNotifications(NOTIFICATIONS.filter(n => !n.read).length);
-  }, []);
-
-  // Redirect if not logged in
-  if (status === "loading") {
-    return <div className="flex h-screen items-center justify-center">Loading...</div>;
-  }
-
-  if (status === "unauthenticated") {
+  // Redirect to login if not authenticated
+  if (!session || !session.user) {
     redirect("/login");
-    return null;
   }
 
-  // If the user is a tutor, redirect to tutor dashboard
-  if (session?.user?.role === "TUTOR") {
-    redirect("/tutor/dashboard");
-    return null;
-  }
+  // Fetch user's enrolled courses with progress
+  const enrolledCourses = await db.course.findMany({
+    where: {
+      enrollments: {
+        some: {
+          studentId: session.user.id,
+        },
+      },
+    },
+    include: {
+      tutor: {
+        select: {
+          name: true,
+          image: true,
+        },
+      },
+      progress: {
+        where: {
+          userId: session.user.id,
+        },
+      },
+      videos: {
+        select: {
+          id: true,
+        },
+      },
+      _count: {
+        select: {
+          enrollments: true,
+        },
+      },
+    },
+    orderBy: {
+      enrollments: {
+        _count: "desc",
+      },
+    },
+  });
+
+  // Fetch recently accessed courses
+  const recentCourses = await db.courseProgress.findMany({
+    where: {
+      userId: session.user.id,
+    },
+    orderBy: {
+      lastAccessed: "desc",
+    },
+    take: 3,
+    include: {
+      course: {
+        include: {
+          tutor: {
+            select: {
+              name: true,
+              image: true,
+            },
+          },
+          videos: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
 
   return (
-    <div className="container py-8 pt-24 min-h-screen">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Student Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back, {session?.user?.name || "Student"}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Button variant="outline" className="relative" asChild>
-            <Link href="/notifications">
-              <Bell className="h-5 w-5" />
-              {unreadNotifications > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-white">
-                  {unreadNotifications}
-                </span>
-              )}
-            </Link>
-          </Button>
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={session?.user?.image || undefined} alt={session?.user?.name || "User"} />
-            <AvatarFallback>{session?.user?.name?.[0] || "U"}</AvatarFallback>
-          </Avatar>
-        </div>
-      </div>
+    <div className="container py-10">
+      <h1 className="mb-2 text-3xl font-bold">My Dashboard</h1>
+      <p className="mb-8 text-muted-foreground">
+        Welcome back, {session.user.name}! Here's your learning update.
+      </p>
 
-      <Tabs defaultValue="courses" className="mb-8">
-        <TabsList>
-          <TabsTrigger value="courses" className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4" />
-            My Courses
-          </TabsTrigger>
-          <TabsTrigger value="recommended" className="flex items-center gap-2">
-            <Star className="h-4 w-4" />
-            Recommended
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Notifications
-            {unreadNotifications > 0 && (
-              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-white">
-                {unreadNotifications}
-              </span>
-            )}
-          </TabsTrigger>
+      <Tabs defaultValue="enrolled" className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="enrolled">My Courses</TabsTrigger>
+          <TabsTrigger value="recent">Recently Accessed</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="courses" className="mt-6">
-          <h2 className="mb-4 text-xl font-semibold">My Enrolled Courses</h2>
-          {ENROLLED_COURSES.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center">
-              <GraduationCap className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="mb-2 text-lg font-medium">No courses yet</h3>
-              <p className="mb-4 text-muted-foreground">
-                You haven't enrolled in any courses yet. Browse our catalog to find something you're interested in.
-              </p>
-              <Button asChild>
-                <Link href="/courses">Browse Courses</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              {ENROLLED_COURSES.map((course) => (
-                <motion.div
-                  key={course.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <Card className="overflow-hidden">
-                    <div className="aspect-video overflow-hidden">
+        <TabsContent value="enrolled">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {enrolledCourses.length === 0 ? (
+              <div className="col-span-full rounded-lg border border-dashed p-10 text-center">
+                <h3 className="mb-2 text-lg font-medium">You haven't enrolled in any courses yet</h3>
+                <p className="mb-6 text-muted-foreground">
+                  Explore our course catalog to find something that interests you.
+                </p>
+                <Button asChild>
+                  <Link href="/courses">Browse Courses</Link>
+                </Button>
+              </div>
+            ) : (
+              enrolledCourses.map((course) => {
+                // Get progress data
+                const progressData = course.progress[0];
+                const progress = progressData?.progress || 0;
+                const totalVideos = course.videos.length;
+
+                return (
+                  <Card key={course.id} className="overflow-hidden">
+                    <div className="relative h-40 w-full">
                       <img
-                        src={course.thumbnail}
+                        src={course.thumbnail || "https://placehold.co/600x400/e2e8f0/cccccc?text=Course+Thumbnail"}
                         alt={course.title}
-                        className="h-full w-full object-cover transition-transform hover:scale-105"
+                        className="h-full w-full object-cover"
                       />
-                    </div>
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between">
-                        <div>
-                          <CardTitle>{course.title}</CardTitle>
-                          <CardDescription className="flex items-center gap-2 mt-1">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={course.tutor.avatar} alt={course.tutor.name} />
-                              <AvatarFallback>{course.tutor.name[0]}</AvatarFallback>
-                            </Avatar>
-                            {course.tutor.name}
-                          </CardDescription>
-                        </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                      <div className="absolute bottom-3 left-3">
+                        <Badge variant="secondary" className="bg-black/60 text-white">
+                          {Math.round(progress)}% Complete
+                        </Badge>
                       </div>
+                    </div>
+
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={course.tutor.image || undefined} alt={course.tutor.name || "Tutor"} />
+                          <AvatarFallback>{course.tutor.name?.[0] || "T"}</AvatarFallback>
+                        </Avatar>
+                        <CardDescription>{course.tutor.name}</CardDescription>
+                      </div>
+                      <CardTitle className="line-clamp-1 text-xl">{course.title}</CardTitle>
                     </CardHeader>
-                    <CardContent>
+
+                    <CardContent className="pb-2">
                       <div className="mb-4">
                         <div className="mb-1 flex items-center justify-between text-sm">
                           <span>Progress</span>
-                          <span>{course.progress}%</span>
+                          <span>{Math.round(progress)}%</span>
                         </div>
-                        <Progress value={course.progress} />
+                        <Progress value={progress} className="h-2" />
                       </div>
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {course.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary" className="font-normal">
-                            {tag}
-                          </Badge>
-                        ))}
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Book className="h-4 w-4" />
+                          <span>{totalVideos} lessons</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          <span>{course.duration || "Self-paced"}</span>
+                        </div>
                       </div>
                     </CardContent>
-                    <CardFooter className="flex items-center justify-between border-t px-6 py-3">
-                      <div className="text-xs text-muted-foreground">
-                        <Clock className="mr-1 inline-block h-3 w-3" />
-                        Last accessed {course.lastAccessed}
-                      </div>
-                      <Button size="sm" asChild>
+
+                    <CardFooter>
+                      <Button asChild className="w-full">
                         <Link href={`/courses/${course.id}`}>
-                          Continue
+                          {progress > 0 ? "Continue Learning" : "Start Learning"}
+                          <ChevronRight className="ml-1 h-4 w-4" />
                         </Link>
                       </Button>
                     </CardFooter>
                   </Card>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="recommended" className="mt-6">
-          <h2 className="mb-4 text-xl font-semibold">Recommended For You</h2>
-          <div className="grid gap-6 md:grid-cols-3">
-            {RECOMMENDED_COURSES.map((course) => (
-              <Card key={course.id} className="overflow-hidden">
-                <div className="aspect-video overflow-hidden">
-                  <img
-                    src={course.thumbnail}
-                    alt={course.title}
-                    className="h-full w-full object-cover transition-transform hover:scale-105"
-                  />
-                </div>
-                <CardHeader className="pb-2">
-                  <CardTitle className="line-clamp-1">{course.title}</CardTitle>
-                  <CardDescription className="flex items-center">
-                    by {course.tutor.name}
-                    <div className="ml-2 flex items-center">
-                      <Star className="mr-1 h-3 w-3 fill-yellow-400 text-yellow-400" />
-                      <span className="text-xs font-medium">{course.tutor.rating}</span>
-                    </div>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
-                    {course.description}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {course.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="font-normal">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button variant="outline" className="w-full" asChild>
-                    <Link href={`/courses/${course.id}`}>View Course</Link>
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+                );
+              })
+            )}
           </div>
         </TabsContent>
 
-        <TabsContent value="notifications" className="mt-6">
-          <h2 className="mb-4 text-xl font-semibold">Recent Notifications</h2>
-          <div className="rounded-lg border divide-y">
-            {NOTIFICATIONS.map((notification) => (
-              <div
-                key={notification.id}
-                className={`flex items-start gap-4 p-4 ${
-                  !notification.read ? "bg-muted/50" : ""
-                }`}
-              >
-                <div className="rounded-full bg-primary/10 p-2 text-primary">
-                  {notification.type === "message" && <MessageSquare className="h-5 w-5" />}
-                  {notification.type === "course" && <Play className="h-5 w-5" />}
-                  {notification.type === "achievement" && <GraduationCap className="h-5 w-5" />}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">{notification.content}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {notification.course} • {notification.time}
-                  </p>
-                </div>
-                {!notification.read && (
-                  <Badge variant="default" className="ml-auto">New</Badge>
-                )}
+        <TabsContent value="recent">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {recentCourses.length === 0 ? (
+              <div className="col-span-full rounded-lg border border-dashed p-10 text-center">
+                <h3 className="mb-2 text-lg font-medium">No recent course activity</h3>
+                <p className="mb-6 text-muted-foreground">
+                  Start learning to see your recent activity here.
+                </p>
+                <Button asChild>
+                  <Link href="/courses">Browse Courses</Link>
+                </Button>
               </div>
-            ))}
+            ) : (
+              recentCourses.map((progressItem) => {
+                const course = progressItem.course;
+                const lastAccessed = new Date(progressItem.lastAccessed).toLocaleDateString();
+                const totalVideos = course.videos.length;
+
+                return (
+                  <Card key={course.id} className="overflow-hidden">
+                    <div className="relative h-40 w-full">
+                      <img
+                        src={course.thumbnail || "https://placehold.co/600x400/e2e8f0/cccccc?text=Course+Thumbnail"}
+                        alt={course.title}
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                      <div className="absolute bottom-3 left-3">
+                        <Badge variant="secondary" className="bg-black/60 text-white">
+                          {Math.round(progressItem.progress)}% Complete
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={course.tutor.image || undefined} alt={course.tutor.name || "Tutor"} />
+                          <AvatarFallback>{course.tutor.name?.[0] || "T"}</AvatarFallback>
+                        </Avatar>
+                        <CardDescription>{course.tutor.name}</CardDescription>
+                      </div>
+                      <CardTitle className="line-clamp-1 text-xl">{course.title}</CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="pb-2">
+                      <div className="mb-4">
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span>Last accessed</span>
+                          <span>{lastAccessed}</span>
+                        </div>
+                        <Progress value={progressItem.progress} className="h-2" />
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Book className="h-4 w-4" />
+                          <span>{totalVideos} lessons</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Play className="h-4 w-4" />
+                          <span>Continue</span>
+                        </div>
+                      </div>
+                    </CardContent>
+
+                    <CardFooter>
+                      <Button asChild className="w-full">
+                        <Link href={`/courses/${course.id}`}>
+                          Continue Learning
+                          <ChevronRight className="ml-1 h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                );
+              })
+            )}
           </div>
         </TabsContent>
       </Tabs>
-
-      <div className="mt-12">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Continue Learning</h2>
-          <Button variant="ghost" size="sm" className="gap-1" asChild>
-            <Link href="/courses">
-              View all courses
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
-
-        {ENROLLED_COURSES.length > 0 && (
-          <div className="rounded-lg border p-6">
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="md:w-1/3">
-                <div className="aspect-video overflow-hidden rounded-md">
-                  <img
-                    src={ENROLLED_COURSES[0].thumbnail}
-                    alt={ENROLLED_COURSES[0].title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-              <div className="md:w-2/3">
-                <h3 className="text-lg font-semibold mb-2">{ENROLLED_COURSES[0].title}</h3>
-                <p className="text-muted-foreground mb-4">{ENROLLED_COURSES[0].description}</p>
-                <div className="mb-4">
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span>Progress</span>
-                    <span>{ENROLLED_COURSES[0].progress}%</span>
-                  </div>
-                  <Progress value={ENROLLED_COURSES[0].progress} className="h-2" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <div>
-                    <p className="text-sm font-medium">Next Lesson</p>
-                    <p className="text-sm text-muted-foreground">{ENROLLED_COURSES[0].nextLesson}</p>
-                  </div>
-                  <Button className="ml-auto" asChild>
-                    <Link href={`/courses/${ENROLLED_COURSES[0].id}`}>
-                      Continue Learning
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

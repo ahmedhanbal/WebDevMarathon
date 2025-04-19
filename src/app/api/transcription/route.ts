@@ -9,6 +9,9 @@ const TranscriptionSchema = z.object({
   audioUrl: z.string().url("Must be a valid audio URL"),
 });
 
+// Define user roles
+type UserRole = "STUDENT" | "TUTOR" | "ADMIN";
+
 // Process video transcription
 export async function POST(req: Request) {
   try {
@@ -55,48 +58,70 @@ export async function POST(req: Request) {
     }
 
     // Verify the tutor owns the course
-    if (video.course.tutorId !== session.user.id && session.user.role !== "ADMIN") {
+    const isOwner = video.course.tutorId === session.user.id;
+    const userRole = session.user.role as UserRole;
+    const isAdmin = userRole === "ADMIN";
+
+    if (!isOwner && !isAdmin) {
       return NextResponse.json(
         { error: "Forbidden - You do not have permission to transcribe this video" },
         { status: 403 }
       );
     }
 
-    // In a real app, we would download the audio and send it to OpenAI Whisper API
-    // For this implementation, we'll simulate it with a placeholder
-
-    // Simulated API call to OpenAI Whisper
-    // In a real app, you would use something like:
-    /*
+    // Download the audio file
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      return NextResponse.json(
+        { error: "Failed to download audio file" },
+        { status: 500 }
+      );
+    }
+    
+    const audioBlob = await audioResponse.blob();
+    
+    // Prepare form data for OpenAI API
     const formData = new FormData();
-    formData.append("file", audioFile);
+    formData.append("file", audioBlob, "audio.mp3");
     formData.append("model", "whisper-1");
     formData.append("language", "en");
-
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    formData.append("response_format", "verbose_json");
+    formData.append("timestamp_granularities", "segment");
+    
+    // Call OpenAI Whisper API
+    const openAIResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: formData,
     });
-
-    const data = await response.json();
-    const transcriptContent = data.text;
-    */
-
-    // Simulate a delay for processing
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Simulate a transcript with timestamps (in real app, Whisper would provide this)
-    const transcriptContent = [
-      { time: "0:00", text: "Welcome to this lesson on web development fundamentals." },
-      { time: "0:10", text: "Today we'll be covering HTML, CSS, and JavaScript basics." },
-      { time: "0:20", text: "HTML or Hypertext Markup Language is the standard markup language for documents designed to be displayed in a web browser." },
-      { time: "0:35", text: "It defines the structure of web content through a series of elements." },
-      { time: "0:45", text: "Let's start by creating a simple HTML document." },
-      // ... more transcript lines
-    ].map(item => `${item.time} - ${item.text}`).join("\n\n");
+    
+    if (!openAIResponse.ok) {
+      const errorData = await openAIResponse.json();
+      console.error("OpenAI API error:", errorData);
+      
+      return NextResponse.json(
+        { error: "Transcription service error", details: errorData },
+        { status: 500 }
+      );
+    }
+    
+    const transcriptionData = await openAIResponse.json();
+    
+    // Format transcription with timestamps
+    let transcriptContent = "";
+    
+    if (transcriptionData.segments) {
+      // Process segments with timestamps
+      transcriptContent = transcriptionData.segments.map((segment: any) => {
+        const startTime = formatTime(segment.start);
+        return `${startTime} - ${segment.text.trim()}`;
+      }).join("\n\n");
+    } else {
+      // Fallback to just the text if no segments
+      transcriptContent = transcriptionData.text;
+    }
 
     // Create or update the transcript
     let transcript;
@@ -131,4 +156,12 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to format time in MM:SS format
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
