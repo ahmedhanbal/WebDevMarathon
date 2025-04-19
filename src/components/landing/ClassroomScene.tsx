@@ -523,18 +523,38 @@ const Scene = () => {
 // Main export
 const ClassroomScene = () => {
   return (
-    <Canvas 
-      shadows 
-      dpr={[1, 2]} 
-      className="h-full w-full bg-gradient-to-b from-blue-900 to-purple-900"
-      camera={{ position: [0, 4, 10], fov: 45 }}
-      gl={{ alpha: true, antialias: true }}
-      performance={{ min: 0.5 }}
-    >
-      <fog attach="fog" args={["#14213d", 8, 30]} />
-      <color attach="background" args={["#14213d"]} />
-      <Scene />
-    </Canvas>
+    <div className="h-[60vh] w-full">
+      <Canvas shadows dpr={[1, 2]} legacy={false}>
+        <color attach="background" args={["#f0f0f0"]} />
+        <fog attach="fog" args={["#f0f0f0", 5, 30]} />
+        <ambientLight intensity={0.5} />
+        <directionalLight
+          position={[10, 10, 5]}
+          intensity={1}
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+        />
+        <PerspectiveCamera makeDefault position={[0, 2, 10]} fov={45} />
+        <OrbitControls 
+          enableZoom={true}
+          enablePan={true}
+          minPolarAngle={Math.PI / 6}
+          maxPolarAngle={Math.PI / 2}
+          minDistance={5}
+          maxDistance={15}
+        />
+        <Scene />
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, -0.5, 0]}
+          receiveShadow
+        >
+          <planeGeometry args={[100, 100]} />
+          <shadowMaterial opacity={0.4} />
+        </mesh>
+      </Canvas>
+    </div>
   );
 };
 

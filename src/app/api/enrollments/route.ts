@@ -54,6 +54,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // If course has a price and price > 0, do not permit direct enrollment
+    if (course.price && course.price > 0) {
+      return NextResponse.json(
+        { error: "This is a paid course. Please complete payment to enroll." },
+        { status: 403 }
+      );
+    }
+
     // Check if the user is already enrolled
     const existingEnrollment = await db.enrollment.findUnique({
       where: {

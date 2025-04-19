@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { JWT } from "next-auth/jwt";  // Import JWT type directly
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import authConfig from "@/auth.config";
@@ -7,7 +8,7 @@ import { getUserById } from "@/lib/data/user";
 // Define UserRole type matching our schema
 export type UserRole = "STUDENT" | "TUTOR" | "ADMIN";
 
-// Extend the session and JWT types
+// Extend the session type
 declare module "next-auth" {
   interface User {
     role?: UserRole;
@@ -24,6 +25,7 @@ declare module "next-auth" {
   }
 }
 
+// Extend the JWT type
 declare module "next-auth/jwt" {
   interface JWT {
     role?: UserRole;
@@ -44,10 +46,12 @@ export const {
   },
   events: {
     async linkAccount({ user }) {
-      await db.user.update({
-        where: { id: user.id },
-        data: { emailVerified: new Date() }
-      });
+      if (user.id) {
+        await db.user.update({
+          where: { id: user.id },
+          data: { emailVerified: new Date() }
+        });
+      }
     }
   },
   callbacks: {
@@ -56,12 +60,14 @@ export const {
       if (account?.provider !== "credentials") {
         // Set default role for new users from OAuth
         try {
-          const dbUser = await getUserById(user.id);
-          if (dbUser && !dbUser.role) {
-            await db.user.update({
-              where: { id: user.id },
-              data: { role: "STUDENT" }
-            });
+          if (user.id) {
+            const dbUser = await getUserById(user.id);
+            if (dbUser && !dbUser.role) {
+              await db.user.update({
+                where: { id: user.id },
+                data: { role: "STUDENT" }
+              });
+            }
           }
         } catch (error) {
           console.error("Error updating user role:", error);
