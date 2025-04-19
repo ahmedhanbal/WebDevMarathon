@@ -9,8 +9,9 @@ import {
   Sphere,
   Html
 } from "@react-three/drei";
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import type * as THREE from "three";
+import { ErrorBoundary } from 'react-error-boundary';
 
 // Simple desk component
 const Desk = ({
@@ -102,7 +103,15 @@ const Chair = ({
 };
 
 // Student component
-const Student = ({ position = [0, 0, 0] as [number, number, number], rotation = [0, 0, 0], scale = 0.5 }) => {
+const Student = ({ 
+  position = [0, 0, 0] as [number, number, number], 
+  rotation = [0, 0, 0] as [number, number, number], 
+  scale = 0.5 
+}: {
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: number;
+}) => {
   const [hovered, setHovered] = useState(false);
   const [active, setActive] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
@@ -119,7 +128,7 @@ const Student = ({ position = [0, 0, 0] as [number, number, number], rotation = 
     <group
       ref={groupRef}
       position={position}
-      rotation={rotation as unknown as THREE.Euler}
+      rotation={rotation}
       scale={scale}
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
@@ -523,11 +532,22 @@ const Scene = () => {
 
 // Main component that wraps the Scene with Canvas
 const ClassroomSceneContent = () => {
+  const fallbackRender = () => (
+    <div className="h-[60vh] w-full flex items-center justify-center bg-gray-100">
+      <div className="p-6 bg-white rounded shadow-lg">
+        <h2 className="text-xl font-bold text-red-500 mb-2">3D Scene Error</h2>
+        <p className="text-gray-700">Sorry, there was an error loading the 3D classroom scene.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-[60vh] w-full">
-      <Canvas shadows>
-        <Scene />
-      </Canvas>
+      <ErrorBoundary fallbackRender={fallbackRender}>
+        <Canvas shadows>
+          <Scene />
+        </Canvas>
+      </ErrorBoundary>
     </div>
   );
 };

@@ -525,7 +525,10 @@ const Scene = () => {
 // Import the 3D scene content with no SSR
 const ClassroomSceneContent = dynamic(
   () => import('./ClassroomSceneContent'),
-  { ssr: false }
+  { 
+    ssr: false,
+    loading: () => <ScenePlaceholder />
+  }
 );
 
 // Placeholder component to show while the 3D scene is loading
@@ -540,11 +543,7 @@ const ScenePlaceholder = () => (
 
 // Main component that renders the 3D scene with a loading fallback
 const ClassroomScene = () => {
-  return (
-    <Suspense fallback={<ScenePlaceholder />}>
-      <ClassroomSceneContent />
-    </Suspense>
-  );
+  return <ClassroomSceneContent />;
 };
 
 export default ClassroomScene;
