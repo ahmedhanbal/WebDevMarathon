@@ -22,7 +22,3 @@ A modern educational technology platform built with Next.js, featuring courses, 
 - **ORM**: Prisma
 - **Payments**: Stripe
 - **Real-time**: Socket.io
-
-## Team Members
- - Ahmed Ali Zahid
- - Muhammad Haseeb
